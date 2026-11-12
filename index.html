@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<title>Packed list</title>
+<style>
+:root { --bg:#f4f6f8; --card:#fff; --ink:#0f172a; --mut:#64748b; --line:#e2e8f0; --pri:#0f766e;
+  --ready:#b45309; --ready-bg:#fef3c7; --prog:#1d4ed8; --prog-bg:#dbeafe; --done:#15803d; --done-bg:#dcfce7; --err:#b91c1c; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0b1220; --card:#111827; --ink:#e5e7eb; --mut:#94a3b8; --line:#1f2937; } }
+* { box-sizing: border-box; }
+body { margin:0; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background:var(--bg); color:var(--ink); }
+header { position:sticky; top:0; background:var(--pri); color:#fff; padding:12px 16px; z-index:2; }
+header h1 { margin:0; font-size:17px; }
+header .sub { font-size:12px; opacity:.85; margin-top:2px; }
+main { padding:12px 16px 40px; max-width:720px; margin:0 auto; }
+.bar { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+input, select, button { font:inherit; font-size:16px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--ink); }
+input { flex:1; min-width:0; }
+button { background:var(--pri); color:#fff; border:0; font-weight:600; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:10px; }
+.top { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
+.no { font-weight:800; } .cust { font-weight:600; margin-top:2px; } .mut { color:var(--mut); font-size:13px; }
+.pill { font-size:12px; font-weight:700; padding:4px 10px; border-radius:20px; white-space:nowrap; }
+.READY { background:var(--ready-bg); color:var(--ready) } .IN_PROGRESS { background:var(--prog-bg); color:var(--prog) } .PACKED, .DISPATCHED { background:var(--done-bg); color:var(--done) }
+.pendi { margin-top:8px; } .pendi b { color:var(--pri); }
+a.tel { color:var(--pri); font-weight:600; text-decoration:none; }
+.empty, .err { text-align:center; padding:32px 0; color:var(--mut); } .err { color:var(--err); }
+</style>
+</head>
+<body>
+<header><h1 id="title">Packed list</h1><div class="sub" id="sub">Loading…</div></header>
+<main id="app"></main>
+<script>
+(function () {
+  // Link format: packed.html?u=<project url>&k=<publishable key>&c=<shop code>
+  var p = new URLSearchParams(location.search);
+  var store = { get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+  var U = p.get('u') || store.get('pl_u'), K = p.get('k') || store.get('pl_k'), C = p.get('c') || store.get('pl_c');
+  if (p.get('u')) { store.set('pl_u', U); store.set('pl_k', K); store.set('pl_c', C); }
+  var rows = [], status = 'PACKED', q = '';
+  var label = { READY: 'Ready', IN_PROGRESS: 'Packing', PACKED: 'Packed', DISPATCHED: 'Dispatched' };
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function d(iso) { var a = String(iso).split('-'); return a[2] + '-' + a[1] + '-' + a[0]; }
+  var app = document.getElementById('app');
+  if (!U || !K || !C) { app.innerHTML = '<div class="err">This link is incomplete. Ask the shop for the packed-list link (Backup &amp; Sync → Cloud).</div>'; document.getElementById('sub').textContent = ''; return; }
+
+  function render() {
+    var list = rows.filter(function (r) {
+      if (status && status !== 'ALL' && r.packing_status !== status) return false;
+      if (!q) return true;
+      var t = (r.invoice_no + ' ' + r.customer_name + ' ' + (r.customer_phone || '') + ' ' + (r.pendi || '') + ' ' + (r.customer_city || '')).toLowerCase();
+      return t.indexOf(q.toLowerCase()) >= 0;
+    });
+    var h = '<div class="bar"><input id="q" type="search" placeholder="Name, phone, pendi, bill no" value="' + esc(q) + '">' +
+      '<select id="st"><option value="PACKED">Packed</option><option value="DISPATCHED">Dispatched</option><option value="READY">Ready</option><option value="IN_PROGRESS">Packing</option><option value="ALL">All</option></select>' +
+      '<button id="rf">Refresh</button></div>';
+    if (!list.length) h += '<div class="empty">Nothing here.</div>';
+    list.forEach(function (r) {
+      h += '<div class="card"><div class="top"><div><div class="no">' + esc(r.invoice_no) + '</div><div class="cust">' + esc(r.customer_name) + '</div>' +
+        '<div class="mut">' + d(r.invoice_date) + (r.customer_city ? ' · ' + esc(r.customer_city) : '') + '</div></div>' +
+        '<span class="pill ' + esc(r.packing_status) + '">' + (label[r.packing_status] || '') + '</span></div>' +
+        (r.pendi ? '<div class="pendi">Pendi: <b>' + esc(r.pendi) + '</b></div>' : '') +
+        (r.customer_phone ? '<div style="margin-top:6px"><a class="tel" href="tel:' + esc(r.customer_phone) + '">' + esc(r.customer_phone) + '</a></div>' : '') +
+        '<div class="mut" style="margin-top:6px">' + r.total_sets + ' sets · ' + r.total_pcs + ' pcs</div></div>';
+    });
+    app.innerHTML = h;
+    var st = document.getElementById('st'); st.value = status; st.onchange = function () { status = st.value; render(); };
+    var qi = document.getElementById('q'); qi.oninput = function () { q = qi.value; clearTimeout(qi._t); qi._t = setTimeout(function () { render(); var n = document.getElementById('q'); n.focus(); n.setSelectionRange(q.length, q.length); }, 250); };
+    document.getElementById('rf').onclick = load;
+  }
+
+  function load() {
+    document.getElementById('sub').textContent = 'Loading…';
+    fetch(U.replace(/\/+$/, '') + '/rest/v1/rpc/get_packed', {
+      method: 'POST',
+      headers: { apikey: K, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_code: C })
+    }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.message || ('Error ' + r.status)); return j; }); })
+      .then(function (j) {
+        rows = j || [];
+        document.getElementById('sub').textContent = 'Last 14 days · updated ' + new Date().toLocaleTimeString() + ' · shop syncs every 10 min';
+        render();
+      })
+      .catch(function (e) { document.getElementById('sub').textContent = ''; app.innerHTML = '<div class="err">Could not load: ' + esc(e.message) + '</div>'; });
+  }
+  load();
+  setInterval(load, 120000);
+})();
+</script>
+</body>
+</html>
